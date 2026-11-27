@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kestrel Ridge Run — a flight game</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --amber: #ffe9a0; --amber-dim: rgba(255,233,160,.55); --red: #ff5a3c; --green: #7dff9a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a141e;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--amber); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+    text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  #hud.dim { opacity: .25; }
+  .panel { position: absolute; background: rgba(8,18,28,.62); border: 1px solid rgba(255,233,160,.35);
+    border-radius: 8px; padding: 8px 12px; backdrop-filter: blur(2px); }
+  .label { font-size: 10px; letter-spacing: .18em; color: var(--amber-dim); }
+  .big { font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .unit { font-size: 11px; color: var(--amber-dim); }
+  .bad { color: var(--red) !important; }
+  #panel-speed { left: 16px; top: 64px; min-width: 118px; }
+  #panel-alt { right: 16px; top: 64px; min-width: 128px; text-align: right; }
+  #panel-score { left: 16px; top: 16px; }
+  #panel-score .big { font-size: 24px; }
+  #panel-time { right: 16px; top: 16px; text-align: right; }
+  #compass-wrap { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); text-align: center; }
+  #compass-canvas { display: block; border: 1px solid rgba(255,233,160,.35); border-radius: 6px;
+    background: rgba(8,18,28,.62); }
+  #hud-next { font-size: 12px; letter-spacing: .12em; color: var(--amber); margin-top: 4px; }
+  #panel-att { left: 50%; bottom: 16px; transform: translateX(-50%); padding: 6px; }
+  #att-canvas { display: block; }
+  #panel-sys { right: 16px; bottom: 16px; width: 168px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 11px; letter-spacing: .08em; }
+  .bar { flex: 1; height: 10px; background: rgba(255,255,255,.14); border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; border-radius: 5px; transition: width .15s linear; }
+  #thr-fill { background: #7db8ff; width: 0%; }
+  #fuel-fill { background: var(--green); width: 100%; }
+  #fuel-fill.low { background: var(--red); }
+  #dmg-fill { background: var(--red); width: 0%; }
+  #panel-mission { left: 16px; top: 168px; max-width: 340px; }
+  #hud-mission { font-size: 13px; font-weight: 700; letter-spacing: .1em; margin-bottom: 6px; }
+  #hud-objectives { list-style: none; font-size: 12px; line-height: 1.55; }
+  #hud-objectives li.done { color: var(--green); }
+  #hud-objectives li.active { color: var(--amber); font-weight: 600; }
+  #hud-objectives li.todo { color: rgba(255,233,160,.45); }
+  #hud-message { position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+    font-size: 22px; font-weight: 700; letter-spacing: .06em; color: #fff;
+    opacity: 0; transition: opacity .3s; text-align: center; white-space: nowrap; }
+  #hud-message.show { opacity: 1; }
+  #hud-warn { position: absolute; left: 50%; top: 30%; transform: translateX(-50%);
+    font-size: 17px; font-weight: 700; letter-spacing: .1em; color: var(--red);
+    opacity: 0; transition: opacity .25s; text-align: center; white-space: nowrap; }
+  #hud-warn.show { opacity: 1; }
+  #panel-help { left: 16px; bottom: 16px; font-size: 11px; line-height: 1.6; color: var(--amber-dim); }
+  #panel-help b { color: var(--amber); }
+  .overlay { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
+    background: rgba(4,10,16,.55); }
+  .overlay.show { display: flex; }
+  .card { max-width: 620px; margin: 16px; padding: 32px 36px; text-align: center;
+    background: rgba(8,18,28,.88); border: 1px solid rgba(255,233,160,.5); border-radius: 14px;
+    box-shadow: 0 18px 60px rgba(0,0,0,.6); }
+  .card h1 { font-size: 42px; letter-spacing: .04em; margin-bottom: 4px; }
+  .card h2 { font-size: 15px; font-weight: 400; color: var(--amber-dim); letter-spacing: .22em; margin-bottom: 18px; }
+  .card p { font-size: 15px; line-height: 1.65; margin-bottom: 12px; color: #f2e6c8; }
+  .card .controls { font-size: 13px; line-height: 1.9; color: var(--amber-dim); margin-bottom: 20px; }
+  .card .controls b { color: var(--amber); }
+  .btn { pointer-events: auto; cursor: pointer; display: inline-block; padding: 13px 34px; font-size: 17px;
+    font-weight: 700; letter-spacing: .08em; color: #1a1206; background: var(--amber);
+    border: none; border-radius: 9px; }
+  .btn:hover { background: #fff3c4; }
+  .btn.ghost { background: transparent; color: var(--amber); border: 1px solid var(--amber-dim); margin-left: 10px; }
+  .stat { font-size: 26px; font-weight: 700; margin: 6px 0 18px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="hud">
+  <div class="panel" id="panel-score">
+    <div class="label">SCORE</div>
+    <div class="big" id="hud-score">0</div>
+  </div>
+  <div class="panel" id="panel-time">
+    <div class="label">FLIGHT TIME</div>
+    <div class="big" id="hud-time">00:00</div>
+    <div class="label" id="hud-lives">✈✈✈</div>
+  </div>
+  <div id="compass-wrap">
+    <canvas id="compass-canvas" width="360" height="42"></canvas>
+    <div id="hud-next"></div>
+  </div>
+  <div class="panel" id="panel-speed">
+    <div class="label">AIRSPEED</div>
+    <div><span class="big" id="hud-speed">0</span> <span class="unit">KT</span></div>
+    <div class="label" style="margin-top:6px">VERT SPEED</div>
+    <div><span id="hud-vs">+0.0</span> <span class="unit">M/S</span></div>
+  </div>
+  <div class="panel" id="panel-alt">
+    <div class="label">ALTITUDE</div>
+    <div><span class="big" id="hud-alt">0</span> <span class="unit">M</span></div>
+    <div class="label" style="margin-top:6px">HEIGHT AGL · HDG</div>
+    <div><span id="hud-agl">0</span> <span class="unit">M</span> · <span id="hud-hdg">000</span>°</div>
+  </div>
+  <div class="panel" id="panel-att"><canvas id="att-canvas" width="150" height="150"></canvas></div>
+  <div class="panel" id="panel-sys">
+    <div class="bar-row"><span style="width:52px">THR</span><div class="bar"><div id="thr-fill"></div></div></div>
+    <div class="bar-row"><span style="width:52px" id="hud-fuel">FUEL 100%</span><div class="bar"><div id="fuel-fill"></div></div></div>
+    <div class="bar-row"><span style="width:52px">DMG</span><div class="bar"><div id="dmg-fill"></div></div></div>
+    <div class="bar-row" style="justify-content:space-between"><span id="hud-gear">GEAR DOWN</span><span id="hud-flaps">CLEAN</span></div>
+  </div>
+  <div class="panel" id="panel-mission">
+    <div id="hud-mission">MISSION 1/3 — Ring Run</div>
+    <ul id="hud-objectives"></ul>
+  </div>
+  <div class="panel" id="panel-help">
+    <b>W/S</b> throttle · <b>↑/↓</b> pitch · <b>←/→</b> bank · <b>A/D</b> rudder<br>
+    <b>Drag mouse</b> steer · <b>G</b> gear · <b>F</b> flaps · <b>C</b> camera<br>
+    <b>P</b> pause · <b>M</b> sound · <b>R</b> new airframe
+  </div>
+  <div id="hud-message"></div>
+  <div id="hud-warn"></div>
+</div>
+
+<div class="overlay show" id="overlay-title">
+  <div class="card">
+    <h1>KESTREL RIDGE RUN</h1>
+    <h2>A BUSH-PLANE SORTIE OVER THE VALLEY</h2>
+    <p>You are Kestrel-7, the valley courier. Three sorties, one flight:
+    thread the <b>8 valley rings</b>, slip the <b>6 canyon gates</b> low and fast,
+    then bring her home for a <b>touch-and-go on Runway 18</b>.</p>
+    <p>Throttle and turn discipline win the day — firewalling everywhere burns
+    the fuel dry, and a steep bank at low speed stalls the wing.</p>
+    <div class="controls">
+      <b>W / S</b> throttle &nbsp;·&nbsp; <b>↑ / ↓</b> pitch &nbsp;·&nbsp; <b>← / →</b> bank &nbsp;·&nbsp; <b>A / D</b> rudder<br>
+      <b>Drag the mouse</b> to steer &nbsp;·&nbsp; <b>G</b> gear &nbsp;·&nbsp; <b>F</b> flaps &nbsp;·&nbsp; <b>C</b> camera &nbsp;·&nbsp; <b>P</b> pause
+    </div>
+    <button class="btn" id="btn-fly">FLY THE SORTIE</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-crash">
+  <div class="card">
+    <h1>KESTREL-7 IS DOWN</h1>
+    <h2 id="crash-reason">The sortie ended in the valley.</h2>
+    <p id="crash-lives"></p>
+    <button class="btn" id="btn-respawn">FLY AGAIN (R)</button>
+    <button class="btn ghost" id="btn-again">RESTART SORTIE</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-complete">
+  <div class="card">
+    <h1>SORTIE COMPLETE</h1>
+    <h2>ALL THREE MISSIONS FLOWN — WELCOME HOME, KESTREL-7</h2>
+    <p>Final score</p>
+    <div class="stat" id="final-score">0</div>
+    <p>Flight time <b id="final-time">00:00</b></p>
+    <button class="btn" id="btn-fly-again">FLY IT AGAIN (R)</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-gameover">
+  <div class="card">
+    <h1>OUT OF AIRFRAMES</h1>
+    <h2>KESTREL FIELD WILL HAVE ANOTHER PLANE READY SOON</h2>
+    <p>Three airframes lost. The valley keeps its secrets — for today.</p>
+    <button class="btn" id="btn-fly-again2" onclick="location.reload()">TRY AGAIN</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-pause">
+  <div class="card">
+    <h1>PAUSED</h1>
+    <h2>THE VALLEY WAITS</h2>
+    <button class="btn" id="btn-resume">RESUME (P)</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
